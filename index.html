@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yak Yim Thai Kitchen — Reservations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal-deep:#0E3E3A;
+    --teal:#18605C;
+    --teal-light:#2C8580;
+    --gold:#D7B645;
+    --gold-light:#F2D675;
+    --gold-dark:#9C6F1A;
+    --cream:#FBF8F1;
+    --ink:#0E2A28;
+    --line: rgba(14,42,40,0.14);
+    --chili:#B33A1E;
+    --font-display: 'Fraunces', serif;
+    --font-body: 'Public Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background: var(--cream);
+    color: var(--ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  .app{ max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  /* ---------- header ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; flex-wrap:wrap;
+    padding: 14px 20px; margin-bottom:24px; border-radius: 8px;
+    background: var(--teal); color: var(--cream);
+  }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .brand img{ width:52px; height:52px; border-radius:6px; flex-shrink:0; display:block; }
+  .brand h1{
+    font-family: var(--font-display); font-weight:700; font-size: clamp(20px,4vw,28px);
+    margin:0; letter-spacing: -0.01em; color: var(--gold-light);
+  }
+  .brand p{ margin:2px 0 0; font-size:12px; color: var(--cream); opacity:.8; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
+
+  .tabs{ display:flex; gap:8px; }
+  .tab-btn{
+    font-family: var(--font-body); font-weight:600; font-size:14px;
+    padding:9px 16px; border-radius:999px; border:2px solid var(--gold-light);
+    background: transparent; color: var(--gold-light); cursor:pointer;
+    transition: background .15s ease, color .15s ease, transform .1s ease;
+  }
+  .tab-btn:hover{ transform: translateY(-1px); }
+  .tab-btn.active{ background: var(--gold-light); color: var(--teal-deep); }
+  .tab-btn:focus-visible{ outline: 3px solid var(--gold); outline-offset:2px; }
+
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  .setup-banner{
+    background: var(--gold-light); border:1px solid var(--gold-dark); border-radius:6px;
+    padding:16px 18px; margin-bottom:20px; font-size:14px; line-height:1.6;
+  }
+  .setup-banner code{ font-family: var(--font-mono); background: rgba(14,42,40,0.08); padding:1px 6px; border-radius:4px; }
+  .hidden{ display:none !important; }
+
+  /* ---------- booking form ---------- */
+  .book-grid{ display:grid; grid-template-columns: 1.3fr 1fr; gap: 22px; align-items:start; }
+  @media (max-width: 720px){ .book-grid{ grid-template-columns: 1fr; } }
+
+  .ticket-form{
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 26px 24px 24px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+  }
+  .form-eyebrow{
+    font-family: var(--font-mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+    color: var(--teal); margin:0 0 4px;
+  }
+  .ticket-form h2{ font-family: var(--font-display); font-size:24px; margin: 0 0 18px; color: var(--teal-deep); }
+
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-size:13px; font-weight:600; margin-bottom:6px; }
+  .field input, .field select, .field textarea{
+    width:100%; font-family: var(--font-body); font-size:15px;
+    padding:10px 12px; border-radius:6px; border:1.5px solid var(--line);
+    background:#fff; color: var(--ink);
+  }
+  .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible{
+    outline: 3px solid var(--gold); outline-offset:1px; border-color: var(--teal);
+  }
+  .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:480px){ .field-row{ grid-template-columns:1fr; } }
+  textarea{ resize: vertical; min-height:60px; }
+
+  .submit-btn{
+    width:100%; font-family: var(--font-body); font-weight:700; font-size:15px;
+    padding:13px; border-radius:6px; border:none; cursor:pointer;
+    background: var(--teal); color: var(--cream); margin-top:6px;
+    transition: background .15s ease;
+  }
+  .submit-btn:hover{ background: var(--teal-deep); }
+  .submit-btn:disabled{ background:#9c9c94; cursor:not-allowed; }
+  .submit-btn:focus-visible{ outline: 3px solid var(--gold); outline-offset:2px; }
+
+  .form-error{ color: var(--chili); font-size:13px; font-weight:600; margin-top:8px; min-height:16px; }
+
+  .availability-panel{
+    background: var(--teal-deep); color: var(--cream);
+    border-radius: 4px; padding: 22px 20px; position:sticky; top:16px;
+  }
+  .availability-panel h3{ font-family: var(--font-display); font-size:18px; margin:0 0 12px; color: var(--gold-light); }
+  .avail-line{ display:flex; justify-content:space-between; align-items:center; font-family: var(--font-mono); font-size:14px; padding:6px 0; border-bottom:1px dashed rgba(251,248,241,0.2); }
+  .avail-badge{ font-weight:700; padding:2px 10px; border-radius:999px; font-size:13px; }
+  .avail-ok{ background: var(--teal-light); color:#07211f; }
+  .avail-full{ background: var(--chili); color:#fff; }
+  .avail-hint{ font-size:12px; opacity:.8; margin-top:12px; line-height:1.5; }
+
+  /* ---------- confirmation ticket ---------- */
+  .confirmation{ margin-top:22px; }
+  .confirmation.hidden{ display:none; }
+
+  .paper-ticket{
+    background: #fff; border:1px solid var(--line); border-radius:4px;
+    padding:22px 22px 20px; position:relative; max-width: 420px;
+    background-image: repeating-radial-gradient(circle at 0 0, transparent 0 4px, var(--cream) 4.5px 5px);
+    background-size: 100% 100%;
+  }
+  .paper-ticket::before{
+    content:""; position:absolute; top:-1px; left:0; right:0; height:10px;
+    background-image: repeating-radial-gradient(circle at 10px 0, var(--cream) 0 5px, transparent 5.5px 12px);
+    background-position: top;
+  }
+  .paper-ticket h4{ font-family: var(--font-display); font-size:20px; margin:0 0 4px; color: var(--teal-deep); }
+  .paper-ticket .code{ font-family: var(--font-mono); font-size:13px; color: var(--gold-dark); font-weight:600; }
+  .paper-ticket dl{ margin:14px 0 0; display:grid; grid-template-columns: auto 1fr; gap:6px 14px; font-size:14px; }
+  .paper-ticket dt{ font-weight:600; color: var(--teal); }
+  .paper-ticket dd{ margin:0; font-family: var(--font-mono); }
+
+  /* ---------- dashboard ---------- */
+  .dash-controls{ display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+  .dash-controls label{ font-size:13px; font-weight:600; display:block; margin-bottom:6px; }
+  .dash-controls input[type="date"]{
+    font-family: var(--font-mono); font-size:14px; padding:9px 12px; border-radius:6px; border:1.5px solid var(--line); background:#fff;
+  }
+  .dash-controls input[type="date"]:focus-visible{ outline: 3px solid var(--gold); }
+  .refresh-btn{
+    font-family: var(--font-body); font-weight:600; font-size:13px; padding:9px 14px;
+    border-radius:6px; border:1.5px solid var(--teal); background:#fff; color: var(--teal); cursor:pointer;
+  }
+  .refresh-btn:focus-visible{ outline: 3px solid var(--gold); }
+
+  .stats-strip{ display:grid; grid-template-columns: repeat(3,1fr); gap:12px; margin-bottom:26px; }
+  @media (max-width:600px){ .stats-strip{ grid-template-columns:1fr; } }
+  .stat-card{ background: #fff; border:1px solid var(--line); border-radius:4px; padding:16px 18px; }
+  .stat-card .num{ font-family: var(--font-display); font-size:30px; font-weight:700; color: var(--teal); line-height:1; }
+  .stat-card .label{ font-size:12px; text-transform:uppercase; letter-spacing:.08em; color: var(--ink); opacity:.65; margin-top:6px; font-weight:600; }
+
+  .ticket-rail{ display:flex; flex-direction:column; gap:14px; }
+
+  .order-slip{
+    background: #fff; border:1px solid var(--line); border-radius:2px;
+    padding:16px 18px 14px; display:flex; gap:16px; align-items:flex-start;
+    position:relative; box-shadow: 1px 2px 0 rgba(14,42,40,0.05);
+  }
+  .order-slip::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:6px;
+    background: var(--teal);
+  }
+  .order-slip.status-seated::before{ background: var(--gold-dark); }
+  .order-slip.status-cancelled::before{ background: var(--chili); }
+  .order-slip.status-cancelled{ opacity:.55; }
+
+  .slip-time{ font-family: var(--font-mono); font-size:18px; font-weight:700; color: var(--ink); min-width:64px; padding-left:6px; }
+  .slip-table{ font-family: var(--font-mono); font-size:12px; color: var(--teal); font-weight:700; margin-top:2px; }
+  .slip-body{ flex:1; min-width:0; }
+  .slip-name{ font-weight:700; font-size:15px; }
+  .slip-meta{ font-size:13px; color: var(--ink); opacity:.75; margin-top:2px; }
+  .slip-note{ font-size:13px; margin-top:6px; font-style:italic; color: var(--teal); }
+  .slip-actions{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .chip-btn{
+    font-family: var(--font-body); font-size:12px; font-weight:700; padding:6px 12px;
+    border-radius:999px; border:1.5px solid var(--ink); background:transparent; cursor:pointer;
+  }
+  .chip-btn.primary{ background: var(--teal); color: var(--cream); border-color: var(--teal); }
+  .chip-btn.danger{ border-color: var(--chili); color: var(--chili); }
+  .chip-btn.danger.confirm{ background: var(--chili); color:#fff; }
+  .chip-btn:focus-visible{ outline: 3px solid var(--gold); outline-offset:2px; }
+
+  .status-badge{ font-family: var(--font-mono); font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; text-transform:uppercase; letter-spacing:.04em; }
+  .status-badge.booked{ background: rgba(24,96,92,0.14); color: var(--teal); }
+  .status-badge.seated{ background: rgba(215,182,69,0.25); color: var(--gold-dark); }
+  .status-badge.cancelled{ background: rgba(179,58,30,0.14); color: var(--chili); }
+
+  .empty-state{ text-align:center; padding:40px 20px; color: var(--ink); opacity:.6; font-size:14px; }
+  .loading-state{ text-align:center; padding:30px; font-family: var(--font-mono); font-size:13px; opacity:.7; }
+
+  .dash-footer{ margin-top:16px; font-size:12px; opacity:.55; }
+
+  footer.site-footer{ text-align:center; margin-top:40px; font-size:12px; opacity:.5; }
+
+  @media (prefers-reduced-motion: reduce){
+    .tab-btn, .submit-btn{ transition:none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="data:image/jpeg;base64,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" alt="Yak Yim Thai Kitchen logo">
+      <div>
+        <h1>Yak Yim</h1>
+        <p>Thai Kitchen · Reservations</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Main menu">
+      <button class="tab-btn active" id="tab-book" role="tab" aria-selected="true" data-target="view-book">Book a Table</button>
+      <button class="tab-btn" id="tab-dash" role="tab" aria-selected="false" data-target="view-dashboard">Owner Dashboard</button>
+    </nav>
+  </header>
+
+  <div class="setup-banner hidden" id="setup-banner">
+    <strong>Setup needed:</strong> this page isn't connected to a Google Sheet yet.
+    Deploy the Apps Script in <code>google-apps-script/Code.gs</code> as a Web App, then paste the URL into
+    <code>CONFIG.API_URL</code> near the top of the <code>&lt;script&gt;</code> tag in this file. See README.md.
+  </div>
+
+  <!-- ================= BOOKING VIEW ================= -->
+  <section class="view active" id="view-book">
+    <div class="book-grid">
+      <form class="ticket-form" id="booking-form" novalidate>
+        <p class="form-eyebrow">Table Order Slip</p>
+        <h2>Reserve Your Table</h2>
+
+        <div class="field">
+          <label for="f-name">Name</label>
+          <input type="text" id="f-name" name="name" required autocomplete="name">
+        </div>
+
+        <div class="field">
+          <label for="f-phone">Phone Number</label>
+          <input type="tel" id="f-phone" name="phone" required autocomplete="tel" placeholder="e.g. 555-123-4567">
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="f-date">Date</label>
+            <input type="date" id="f-date" name="date" required>
+          </div>
+          <div class="field">
+            <label for="f-size">Party Size (max 13)</label>
+            <input type="number" id="f-size" name="size" min="1" max="13" value="2" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="f-time">Time</label>
+          <select id="f-time" name="time" required>
+            <option value="">— Select a time —</option>
+            <optgroup label="Lunch" id="grp-lunch"></optgroup>
+            <optgroup label="Dinner" id="grp-dinner"></optgroup>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="f-note">Note (optional)</label>
+          <textarea id="f-note" name="note" placeholder="e.g. shellfish allergy, need a high chair"></textarea>
+        </div>
+
+        <button type="submit" class="submit-btn" id="submit-btn">Confirm Reservation</button>
+        <p class="form-error" id="form-error" role="alert" aria-live="polite"></p>
+      </form>
+
+      <aside class="availability-panel">
+        <h3>Availability</h3>
+        <div id="availability-content">
+          <p class="avail-hint">Pick a date and time in the form to check availability for that slot.</p>
+        </div>
+      </aside>
+    </div>
+
+    <div class="confirmation hidden" id="confirmation" tabindex="-1"></div>
+  </section>
+
+  <!-- ================= DASHBOARD VIEW ================= -->
+  <section class="view" id="view-dashboard">
+    <div class="dash-controls">
+      <div>
+        <label for="d-date">Bookings for</label>
+        <input type="date" id="d-date">
+      </div>
+      <button class="refresh-btn" id="refresh-btn" type="button">Refresh</button>
+    </div>
+
+    <div class="stats-strip">
+      <div class="stat-card"><div class="num" id="stat-count">0</div><div class="label">Tables booked today</div></div>
+      <div class="stat-card"><div class="num" id="stat-guests">0</div><div class="label">Total guests</div></div>
+      <div class="stat-card"><div class="num" id="stat-cancelled">0</div><div class="label">Cancelled</div></div>
+    </div>
+
+    <div class="ticket-rail" id="ticket-rail">
+      <div class="loading-state">Loading…</div>
+    </div>
+    <p class="dash-footer">Data is stored in your Google Sheet and updates live for anyone with the booking link.</p>
+  </section>
+
+  <footer class="site-footer">Yak Yim Thai Kitchen</footer>
+</div>
+
+<script>
+(function(){
+  // =====================================================================
+  // CONFIG — paste your deployed Google Apps Script Web App URL here.
+  // It looks like: https://script.google.com/macros/s/AKfycb.../exec
+  // See README.md for the full setup steps.
+  // =====================================================================
+  const CONFIG = {
+    API_URL: 'https://script.google.com/macros/s/AKfycbxy4XTAnnmqaBewEBMFOkQqpaF9Z9XFL3YD9cKC5jNGqH6WQcxveTbEBpfV4WvX5Hftdg/exec'
+  };
+  const isConfigured = CONFIG.API_URL && CONFIG.API_URL.indexOf('https://script.google.com') === 0;
+  if(!isConfigured){
+    document.getElementById('setup-banner').classList.remove('hidden');
+  }
+
+  // ---- business rules (mirrored client-side for instant feedback;
+  // the Apps Script backend re-checks everything authoritatively) ----
+  const SEATING_MINUTES = 120;
+  const MAX_CONCURRENT_TABLES = 2;
+  const MAX_GUESTS_CONCURRENT = 70;
+  const MAX_PER_TABLE = 13;
+
+  const LUNCH = ['11:00','11:30','12:00','12:30','13:00','13:30'];
+  const DINNER = ['17:00','17:30','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
+
+  function timeToMinutes(t){
+    const parts = t.split(':');
+    return parseInt(parts[0],10)*60 + parseInt(parts[1],10);
+  }
+  function getWindow(time){
+    const start = timeToMinutes(time);
+    return { start, end: start + SEATING_MINUTES };
+  }
+  function windowsOverlap(aStart,aEnd,bStart,bEnd){
+    return aStart < bEnd && bStart < aEnd;
+  }
+  function getOverlappingBookings(bookings, date, time, excludeId){
+    const w = getWindow(time);
+    return bookings.filter(b=>{
+      if(b.date !== date) return false;
+      if(b.status === 'cancelled') return false;
+      if(excludeId && b.id === excludeId) return false;
+      const bw = getWindow(b.time);
+      return windowsOverlap(w.start, w.end, bw.start, bw.end);
+    });
+  }
+
+  function localDateStr(d){
+    d = d || new Date();
+    const off = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - off*60000);
+    return local.toISOString().slice(0,10);
+  }
+  function fmtDateLabel(dateStr){
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' });
+  }
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ---- API calls to the Google Apps Script backend ----
+  async function apiList(date){
+    if(!isConfigured) return [];
+    try{
+      const url = CONFIG.API_URL + '?action=list' + (date ? ('&date=' + encodeURIComponent(date)) : '');
+      const res = await fetch(url);
+      const data = await res.json();
+      return (data && data.ok) ? data.bookings : [];
+    }catch(e){
+      console.error('list error', e);
+      return [];
+    }
+  }
+  async function apiCreate(payload){
+    if(!isConfigured) return { ok:false, error:'This page is not connected to a Google Sheet yet.' };
+    try{
+      const res = await fetch(CONFIG.API_URL, {
+        method:'POST',
+        body: JSON.stringify(Object.assign({ action:'create' }, payload))
+      });
+      return await res.json();
+    }catch(e){
+      console.error('create error', e);
+      return { ok:false, error:'Could not reach the server. Please try again.' };
+    }
+  }
+  async function apiUpdateStatus(id, status){
+    if(!isConfigured) return { ok:false };
+    try{
+      const res = await fetch(CONFIG.API_URL, {
+        method:'POST',
+        body: JSON.stringify({ action:'updateStatus', id, status })
+      });
+      return await res.json();
+    }catch(e){
+      console.error('update error', e);
+      return { ok:false };
+    }
+  }
+
+  // ---- tabs ----
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      tabBtns.forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected','true');
+      document.getElementById(btn.dataset.target).classList.add('active');
+      if(btn.dataset.target === 'view-dashboard'){
+        renderDashboard(document.getElementById('d-date').value || localDateStr());
+      }
+    });
+  });
+
+  // ---- booking form setup ----
+  const dateInput = document.getElementById('f-date');
+  const timeSelect = document.getElementById('f-time');
+  const sizeInput = document.getElementById('f-size');
+  const today = localDateStr();
+  dateInput.value = today;
+  dateInput.min = today;
+
+  const lunchGroup = document.getElementById('grp-lunch');
+  const dinnerGroup = document.getElementById('grp-dinner');
+  LUNCH.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; lunchGroup.appendChild(o); });
+  DINNER.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; dinnerGroup.appendChild(o); });
+
+  const availContent = document.getElementById('availability-content');
+  const submitBtn = document.getElementById('submit-btn');
+  const formError = document.getElementById('form-error');
+
+  async function updateAvailability(){
+    const date = dateInput.value;
+    const time = timeSelect.value;
+    if(!date || !time){
+      availContent.innerHTML = '<p class="avail-hint">Pick a date and time in the form to check availability for that slot.</p>';
+      submitBtn.disabled = false;
+      return;
+    }
+    availContent.innerHTML = '<p class="avail-hint">Checking availability…</p>';
+    const bookings = await apiList(date);
+    const overlapping = getOverlappingBookings(bookings, date, time);
+    const tablesUsed = overlapping.length;
+    const guestsUsed = overlapping.reduce((s,b)=> s + (b.size||0), 0);
+    const tablesFull = tablesUsed >= MAX_CONCURRENT_TABLES;
+    const guestsFull = guestsUsed >= MAX_GUESTS_CONCURRENT;
+    const full = tablesFull || guestsFull;
+    availContent.innerHTML = `
+      <div class="avail-line">
+        <span>Tables in use</span>
+        <span class="avail-badge ${tablesFull?'avail-full':'avail-ok'}">${tablesUsed}/${MAX_CONCURRENT_TABLES}</span>
+      </div>
+      <div class="avail-line">
+        <span>Guests in that window</span>
+        <span class="avail-badge ${guestsFull?'avail-full':'avail-ok'}">${guestsUsed}/${MAX_GUESTS_CONCURRENT}</span>
+      </div>
+      <p class="avail-hint">${full ? 'This time is fully booked. Please try another slot.' : 'This time is available (up to ' + MAX_PER_TABLE + ' guests per table).'}</p>
+    `;
+    submitBtn.disabled = full && isConfigured;
+  }
+  dateInput.addEventListener('change', updateAvailability);
+  timeSelect.addEventListener('change', updateAvailability);
+
+  // ---- submit booking ----
+  const form = document.getElementById('booking-form');
+  const confirmationBox = document.getElementById('confirmation');
+
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    formError.textContent = '';
+    const name = document.getElementById('f-name').value.trim();
+    const phone = document.getElementById('f-phone').value.trim();
+    const date = dateInput.value;
+    const time = timeSelect.value;
+    const size = parseInt(sizeInput.value, 10);
+    const note = document.getElementById('f-note').value.trim();
+
+    if(!name || !phone || !date || !time || !size){
+      formError.textContent = 'Please fill in all required fields.';
+      return;
+    }
+    if(size > MAX_PER_TABLE){
+      formError.textContent = `Party size cannot exceed ${MAX_PER_TABLE} guests per table. Please split into two bookings or contact the restaurant directly.`;
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    const result = await apiCreate({ name, phone, date, time, size, note });
+
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Confirm Reservation';
+
+    if(!result.ok){
+      formError.textContent = result.error || 'Could not save the booking. Please try again.';
+      return;
+    }
+
+    const booking = result.booking;
+    confirmationBox.classList.remove('hidden');
+    confirmationBox.innerHTML = `
+      <div class="paper-ticket">
+        <h4>Reservation Confirmed!</h4>
+        <p class="code">Confirmation code ${booking.id}</p>
+        <dl>
+          <dt>Name</dt><dd>${escapeHtml(name)}</dd>
+          <dt>Date</dt><dd>${fmtDateLabel(date)}</dd>
+          <dt>Time</dt><dd>${time}</dd>
+          <dt>Party size</dt><dd>${size} guests</dd>
+          <dt>Table</dt><dd>Table ${booking.table}</dd>
+        </dl>
+      </div>
+    `;
+    confirmationBox.focus();
+    form.reset();
+    dateInput.value = date;
+    sizeInput.value = 2;
+    timeSelect.value = '';
+    updateAvailability();
+  });
+
+  // ---- dashboard ----
+  const dDate = document.getElementById('d-date');
+  dDate.value = today;
+  dDate.addEventListener('change', ()=> renderDashboard(dDate.value));
+  document.getElementById('refresh-btn').addEventListener('click', ()=> renderDashboard(dDate.value));
+
+  const ticketRail = document.getElementById('ticket-rail');
+  const statCount = document.getElementById('stat-count');
+  const statGuests = document.getElementById('stat-guests');
+  const statCancelled = document.getElementById('stat-cancelled');
+
+  async function renderDashboard(date){
+    ticketRail.innerHTML = '<div class="loading-state">Loading…</div>';
+    const all = await apiList(date);
+    const list = all.slice().sort((a,b)=>{
+      if(a.time !== b.time) return a.time < b.time ? -1 : 1;
+      return (a.table||'').localeCompare(b.table||'');
+    });
+
+    const active = list.filter(b => b.status !== 'cancelled');
+    statCount.textContent = active.length;
+    statGuests.textContent = active.reduce((sum,b)=> sum + (b.size||0), 0);
+    statCancelled.textContent = list.filter(b=>b.status==='cancelled').length;
+
+    if(list.length === 0){
+      ticketRail.innerHTML = `<div class="empty-state">${isConfigured ? 'No bookings for this day yet.' : 'Connect a Google Sheet to see live bookings here.'}</div>`;
+      return;
+    }
+
+    ticketRail.innerHTML = '';
+    list.forEach(b=>{
+      const card = document.createElement('div');
+      card.className = 'order-slip status-' + b.status;
+      card.dataset.id = b.id;
+
+      const statusLabel = { booked:'Booked', seated:'Seated', cancelled:'Cancelled' }[b.status] || b.status;
+
+      card.innerHTML = `
+        <div>
+          <div class="slip-time">${b.time}</div>
+          <div class="slip-table">Table ${b.table}</div>
+        </div>
+        <div class="slip-body">
+          <div class="slip-name">${escapeHtml(b.name)} <span class="status-badge ${b.status}">${statusLabel}</span></div>
+          <div class="slip-meta">${b.size} guests · ${escapeHtml(b.phone)}</div>
+          ${b.note ? `<div class="slip-note">${escapeHtml(b.note)}</div>` : ''}
+          <div class="slip-actions" data-actions></div>
+        </div>
+      `;
+
+      const actions = card.querySelector('[data-actions]');
+      if(b.status === 'booked'){
+        const seatBtn = document.createElement('button');
+        seatBtn.className = 'chip-btn primary';
+        seatBtn.textContent = 'Check In';
+        seatBtn.addEventListener('click', ()=> updateStatus(b.id, 'seated'));
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'chip-btn danger';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', ()=>{
+          cancelBtn.textContent = 'Confirm Cancel?';
+          cancelBtn.classList.add('confirm');
+          cancelBtn.onclick = ()=> updateStatus(b.id, 'cancelled');
+        });
+
+        actions.appendChild(seatBtn);
+        actions.appendChild(cancelBtn);
+      }
+      ticketRail.appendChild(card);
+    });
+  }
+
+  async function updateStatus(id, status){
+    await apiUpdateStatus(id, status);
+    renderDashboard(dDate.value);
+  }
+
+  updateAvailability();
+})();
+</script>
+</body>
+</html>
