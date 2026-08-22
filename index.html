@@ -273,7 +273,7 @@
 
         <div class="field">
           <label for="f-phone">Phone Number</label>
-          <input type="tel" id="f-phone" name="phone" required autocomplete="tel" placeholder="e.g. 555-123-4567">
+          <input type="tel" id="f-phone" name="phone" required autocomplete="tel" placeholder="e.g. 0812345678">
         </div>
 
         <div class="field-row">
@@ -386,8 +386,7 @@
   // ---- business rules (mirrored client-side for instant feedback;
   // the Apps Script backend re-checks everything authoritatively) ----
   const SEATING_MINUTES = 120;
-  const MAX_CONCURRENT_TABLES = 2;
-  const MAX_GUESTS_CONCURRENT = 70;
+  const MAX_GUESTS_CONCURRENT = 57; // total capacity: 13+9+7+(5x4)+(4x2) = 57
   const MAX_PER_TABLE = 13;
 
   const LUNCH = ['11:00','11:30','12:00','12:30','13:00','13:30'];
@@ -429,6 +428,10 @@
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+  function isValidPhone(raw){
+    const digits = raw.replace(/\D/g,'');
+    return /^0\d{9}$/.test(digits);
   }
 
   // ---- API calls to the Google Apps Script backend ----
@@ -571,23 +574,16 @@
     availContent.innerHTML = '<p class="avail-hint">Checking availability…</p>';
     const bookings = await apiList(date);
     const overlapping = getOverlappingBookings(bookings, date, time);
-    const tablesUsed = overlapping.length;
     const guestsUsed = overlapping.reduce((s,b)=> s + (b.size||0), 0);
-    const tablesFull = tablesUsed >= MAX_CONCURRENT_TABLES;
     const guestsFull = guestsUsed >= MAX_GUESTS_CONCURRENT;
-    const full = tablesFull || guestsFull;
     availContent.innerHTML = `
-      <div class="avail-line">
-        <span>Tables in use</span>
-        <span class="avail-badge ${tablesFull?'avail-full':'avail-ok'}">${tablesUsed}/${MAX_CONCURRENT_TABLES}</span>
-      </div>
       <div class="avail-line">
         <span>Guests in that window</span>
         <span class="avail-badge ${guestsFull?'avail-full':'avail-ok'}">${guestsUsed}/${MAX_GUESTS_CONCURRENT}</span>
       </div>
-      <p class="avail-hint">${full ? 'This time is fully booked. Please try another slot.' : 'This time is available (up to ' + MAX_PER_TABLE + ' guests per table).'}</p>
+      <p class="avail-hint">${guestsFull ? 'This time is fully booked. Please try another slot.' : 'This time is available (up to ' + MAX_PER_TABLE + ' guests per table).'}</p>
     `;
-    submitBtn.disabled = full && isConfigured;
+    submitBtn.disabled = guestsFull && isConfigured;
   }
   dateInput.addEventListener('change', updateAvailability);
   timeSelect.addEventListener('change', updateAvailability);
@@ -608,6 +604,10 @@
 
     if(!name || !phone || !date || !time || !size){
       formError.textContent = 'Please fill in all required fields.';
+      return;
+    }
+    if(!isValidPhone(phone)){
+      formError.textContent = 'Please enter a valid 10-digit mobile number starting with 0 (e.g. 0812345678). This number is used to verify the booking.';
       return;
     }
     if(size > MAX_PER_TABLE){
@@ -641,7 +641,7 @@
           <dt>Date</dt><dd>${fmtDateLabel(date)}</dd>
           <dt>Time</dt><dd>${time}</dd>
           <dt>Party size</dt><dd>${size} guests</dd>
-          <dt>Table</dt><dd>Table ${booking.table}</dd>
+          <dt>Booking No.</dt><dd>${booking.bookingNumber}</dd>
         </dl>
       </div>
     `;
@@ -670,7 +670,7 @@
     const all = await apiList(date);
     const list = all.slice().sort((a,b)=>{
       if(a.time !== b.time) return a.time < b.time ? -1 : 1;
-      return (a.table||'').localeCompare(b.table||'');
+      return (parseInt(a.bookingNumber,10)||0) - (parseInt(b.bookingNumber,10)||0);
     });
 
     const active = list.filter(b => b.status !== 'cancelled');
@@ -694,7 +694,7 @@
       card.innerHTML = `
         <div>
           <div class="slip-time">${b.time}</div>
-          <div class="slip-table">Table ${b.table}</div>
+          <div class="slip-table">Booking No. ${b.bookingNumber}</div>
         </div>
         <div class="slip-body">
           <div class="slip-name">${escapeHtml(b.name)} <span class="status-badge ${b.status}">${statusLabel}</span></div>
