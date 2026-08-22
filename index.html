@@ -112,6 +112,16 @@
   .form-error{ color: var(--chili); font-size:13px; font-weight:600; margin-top:8px; min-height:16px; }
   .size-hint{ font-size:12px; color: var(--teal); opacity:.85; margin:-8px 0 16px; line-height:1.5; }
 
+  .photo-hint{ font-size:12px; color: var(--ink); opacity:.6; margin:6px 0 0; line-height:1.5; }
+  .photo-preview{ margin-top:12px; padding:12px; border:1px dashed var(--line); border-radius:6px; }
+  .photo-preview.hidden{ display:none; }
+  .photo-preview img{ max-width:100%; max-height:220px; border-radius:6px; display:block; margin-bottom:10px; }
+  .photo-preview-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+  .ocr-status{ font-size:12px; margin:8px 0 0; min-height:14px; }
+  .ocr-status.success{ color: var(--teal); font-weight:600; }
+  .ocr-status.error{ color: var(--chili); font-weight:600; }
+  .ocr-status.pending{ color: var(--ink); opacity:.65; }
+
   .availability-panel{
     background: var(--teal-deep); color: var(--cream);
     border-radius: 4px; padding: 22px 20px; position:sticky; top:16px;
@@ -184,6 +194,8 @@
   .slip-name{ font-weight:700; font-size:15px; }
   .slip-meta{ font-size:13px; color: var(--ink); opacity:.75; margin-top:2px; }
   .slip-note{ font-size:13px; margin-top:6px; font-style:italic; color: var(--teal); }
+  .slip-photo-link{ display:inline-block; margin-top:8px; }
+  .slip-photo-link img{ max-height:70px; border-radius:6px; border:1px solid var(--line); display:block; }
   .slip-actions{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
   .chip-btn{
     font-family: var(--font-body); font-size:12px; font-weight:700; padding:6px 12px;
@@ -308,6 +320,20 @@
           <textarea id="f-note" name="note" placeholder="e.g. shellfish allergy, need a high chair"></textarea>
         </div>
 
+        <div class="field">
+          <label for="f-photo">Attach a photo (optional)</label>
+          <input type="file" id="f-photo" name="photo" accept="image/*">
+          <p class="photo-hint">e.g. a handwritten booking note. We can try to read the details automatically — always double-check before confirming.</p>
+          <div class="photo-preview hidden" id="photo-preview">
+            <img id="photo-preview-img" alt="Attached photo preview">
+            <div class="photo-preview-actions">
+              <button type="button" class="chip-btn primary" id="ocr-btn">Read from photo</button>
+              <button type="button" class="chip-btn danger" id="remove-photo-btn">Remove</button>
+            </div>
+            <p class="ocr-status" id="ocr-status"></p>
+          </div>
+        </div>
+
         <button type="submit" class="submit-btn" id="submit-btn">Confirm Reservation</button>
         <p class="form-error" id="form-error" role="alert" aria-live="polite"></p>
       </form>
@@ -429,6 +455,13 @@
     div.textContent = str;
     return div.innerHTML;
   }
+  function photoUrl(fileId){
+    return CONFIG.API_URL + '?action=photo&id=' + encodeURIComponent(fileId) + '&pin=' + encodeURIComponent(CONFIG.OWNER_PIN);
+  }
+  function renderPhotoThumb(fileId){
+    const url = photoUrl(fileId);
+    return `<a class="slip-photo-link" href="${url}" target="_blank" rel="noopener" title="View full-size photo"><img src="${url}" alt="Attached photo" loading="lazy"></a>`;
+  }
   function isValidPhone(raw){
     const digits = raw.replace(/\D/g,'');
     return /^0\d{9}$/.test(digits);
@@ -471,6 +504,19 @@
     }catch(e){
       console.error('update error', e);
       return { ok:false };
+    }
+  }
+  async function apiOcr(imageBase64, mimeType){
+    if(!isConfigured) return { ok:false, error:'This page is not connected to a Google Sheet yet.' };
+    try{
+      const res = await fetch(CONFIG.API_URL, {
+        method:'POST',
+        body: JSON.stringify({ action:'ocr', imageBase64, mimeType })
+      });
+      return await res.json();
+    }catch(e){
+      console.error('ocr error', e);
+      return { ok:false, error:'Could not reach the server. Please try again.' };
     }
   }
 
@@ -563,6 +609,96 @@
   sizeInput.addEventListener('input', toggleStaffPinField);
   toggleStaffPinField();
 
+  // ---- photo attach + OCR ----
+  const photoInput = document.getElementById('f-photo');
+  const photoPreview = document.getElementById('photo-preview');
+  const photoPreviewImg = document.getElementById('photo-preview-img');
+  const ocrBtn = document.getElementById('ocr-btn');
+  const removePhotoBtn = document.getElementById('remove-photo-btn');
+  const ocrStatus = document.getElementById('ocr-status');
+  let currentPhotoBase64 = null;
+  let currentPhotoMime = 'image/jpeg';
+
+  function fileToResizedBase64(file, maxDim){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        const img = new Image();
+        img.onload = ()=>{
+          let w = img.width, h = img.height;
+          if(w > maxDim || h > maxDim){
+            if(w >= h){ h = Math.round(h * maxDim / w); w = maxDim; }
+            else{ w = Math.round(w * maxDim / h); h = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function resetPhotoState(){
+    photoInput.value = '';
+    currentPhotoBase64 = null;
+    photoPreview.classList.add('hidden');
+    ocrStatus.textContent = '';
+    ocrStatus.className = 'ocr-status';
+  }
+
+  photoInput.addEventListener('change', async ()=>{
+    const file = photoInput.files[0];
+    if(!file) return;
+    ocrStatus.textContent = '';
+    ocrStatus.className = 'ocr-status';
+    try{
+      const dataUrl = await fileToResizedBase64(file, 1280);
+      currentPhotoMime = 'image/jpeg';
+      currentPhotoBase64 = dataUrl.split(',')[1];
+      photoPreviewImg.src = dataUrl;
+      photoPreview.classList.remove('hidden');
+    }catch(err){
+      console.error('photo read error', err);
+      ocrStatus.textContent = 'Could not read that image. Please try a different photo.';
+      ocrStatus.className = 'ocr-status error';
+    }
+  });
+
+  removePhotoBtn.addEventListener('click', resetPhotoState);
+
+  ocrBtn.addEventListener('click', async ()=>{
+    if(!currentPhotoBase64) return;
+    ocrBtn.disabled = true;
+    ocrStatus.textContent = 'Reading photo…';
+    ocrStatus.className = 'ocr-status pending';
+    const result = await apiOcr(currentPhotoBase64, currentPhotoMime);
+    ocrBtn.disabled = false;
+    if(!result.ok){
+      ocrStatus.textContent = result.error || 'Could not read the photo. Please fill in the form manually.';
+      ocrStatus.className = 'ocr-status error';
+      return;
+    }
+    const f = result.fields || {};
+    if(f.name) document.getElementById('f-name').value = f.name;
+    if(f.phone) document.getElementById('f-phone').value = f.phone;
+    if(f.date) dateInput.value = f.date;
+    if(f.time){
+      const opt = Array.from(timeSelect.options).find(o=>o.value===f.time);
+      if(opt) timeSelect.value = f.time;
+    }
+    if(f.size) sizeInput.value = f.size;
+    if(f.note) document.getElementById('f-note').value = f.note;
+    toggleStaffPinField();
+    updateAvailability();
+    ocrStatus.textContent = 'Filled in from the photo — please check every field before confirming.';
+    ocrStatus.className = 'ocr-status success';
+  });
+
   async function updateAvailability(){
     const date = dateInput.value;
     const time = timeSelect.value;
@@ -620,7 +756,12 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving…';
 
-    const result = await apiCreate({ name, phone, date, time, size, note, staffPin: staffPinInput.value });
+    const result = await apiCreate({
+      name, phone, date, time, size, note,
+      staffPin: staffPinInput.value,
+      imageBase64: currentPhotoBase64 || undefined,
+      mimeType: currentPhotoBase64 ? currentPhotoMime : undefined
+    });
 
     submitBtn.disabled = false;
     submitBtn.textContent = 'Confirm Reservation';
@@ -651,6 +792,7 @@
     sizeInput.value = 2;
     timeSelect.value = '';
     toggleStaffPinField();
+    resetPhotoState();
     updateAvailability();
   });
 
@@ -700,6 +842,7 @@
           <div class="slip-name">${escapeHtml(b.name)} <span class="status-badge ${b.status}">${statusLabel}</span></div>
           <div class="slip-meta">${b.size} guests · ${escapeHtml(b.phone)}</div>
           ${b.note ? `<div class="slip-note">${escapeHtml(b.note)}</div>` : ''}
+          ${b.imageFileId ? renderPhotoThumb(b.imageFileId) : ''}
           <div class="slip-actions" data-actions></div>
         </div>
       `;
