@@ -110,6 +110,7 @@
   .submit-btn:focus-visible{ outline: 3px solid var(--gold); outline-offset:2px; }
 
   .form-error{ color: var(--chili); font-size:13px; font-weight:600; margin-top:8px; min-height:16px; }
+  .size-hint{ font-size:12px; color: var(--teal); opacity:.85; margin:-8px 0 16px; line-height:1.5; }
 
   .availability-panel{
     background: var(--teal-deep); color: var(--cream);
@@ -202,6 +203,31 @@
   .loading-state{ text-align:center; padding:30px; font-family: var(--font-mono); font-size:13px; opacity:.7; }
 
   .dash-footer{ margin-top:16px; font-size:12px; opacity:.55; }
+  .lock-btn{ background:none; border:none; color: var(--teal); text-decoration:underline; cursor:pointer; font-size:12px; font-family: var(--font-body); padding:0; margin-top:6px; }
+
+  /* ---------- PIN modal ---------- */
+  .pin-overlay{
+    position:fixed; inset:0; background: rgba(14,42,40,0.55);
+    display:flex; align-items:center; justify-content:center; padding:20px; z-index:50;
+  }
+  .pin-overlay.hidden{ display:none; }
+  .pin-card{
+    background:#fff; border-radius:8px; padding:26px 24px; width:100%; max-width:320px;
+    box-shadow: 0 12px 30px rgba(14,42,40,0.25);
+  }
+  .pin-card h3{ font-family: var(--font-display); margin:0 0 6px; color: var(--teal-deep); font-size:20px; }
+  .pin-card p{ font-size:13px; opacity:.7; margin:0 0 14px; }
+  .pin-card input{
+    width:100%; font-family: var(--font-mono); font-size:18px; letter-spacing:.2em; text-align:center;
+    padding:10px 12px; border-radius:6px; border:1.5px solid var(--line); margin-bottom:10px;
+  }
+  .pin-card input:focus-visible{ outline: 3px solid var(--gold); border-color: var(--teal); }
+  .pin-actions{ display:flex; gap:8px; }
+  .pin-actions button{ flex:1; font-family: var(--font-body); font-weight:700; font-size:14px; padding:10px; border-radius:6px; cursor:pointer; }
+  .pin-cancel{ background:transparent; border:1.5px solid var(--line); color: var(--ink); }
+  .pin-submit{ background: var(--teal); border:none; color: var(--cream); }
+  .pin-submit:focus-visible, .pin-cancel:focus-visible{ outline: 3px solid var(--gold); outline-offset:2px; }
+  .pin-error{ color: var(--chili); font-size:12px; font-weight:600; min-height:16px; margin:-4px 0 8px; }
 
   footer.site-footer{ text-align:center; margin-top:40px; font-size:12px; opacity:.5; }
 
@@ -256,9 +282,16 @@
             <input type="date" id="f-date" name="date" required>
           </div>
           <div class="field">
-            <label for="f-size">Party Size (max 13)</label>
-            <input type="number" id="f-size" name="size" min="1" max="13" value="2" required>
+            <label for="f-size">Party Size</label>
+            <input type="number" id="f-size" name="size" min="1" max="70" value="2" required>
           </div>
+        </div>
+
+        <p class="size-hint" id="size-hint">Parties over 13 need staff approval — see below, or contact us directly.</p>
+
+        <div class="field hidden" id="staff-pin-field">
+          <label for="f-staff-pin">Staff PIN (required for parties over 13)</label>
+          <input type="password" inputmode="numeric" id="f-staff-pin" name="staffPin" autocomplete="off" placeholder="••••">
         </div>
 
         <div class="field">
@@ -309,10 +342,26 @@
     <div class="ticket-rail" id="ticket-rail">
       <div class="loading-state">Loading…</div>
     </div>
-    <p class="dash-footer">Data is stored in your Google Sheet and updates live for anyone with the booking link.</p>
+    <p class="dash-footer">
+      Data is stored in your Google Sheet and updates live for anyone with the booking link.
+      <br><button class="lock-btn" id="lock-btn" type="button">Lock dashboard</button>
+    </p>
   </section>
 
   <footer class="site-footer">Yak Yim Thai Kitchen</footer>
+</div>
+
+<div class="pin-overlay hidden" id="pin-overlay">
+  <form class="pin-card" id="pin-form" novalidate>
+    <h3>Owner Access</h3>
+    <p>Enter the dashboard PIN to continue.</p>
+    <input type="password" inputmode="numeric" id="pin-input" placeholder="••••" autocomplete="off">
+    <p class="pin-error" id="pin-error" role="alert" aria-live="polite"></p>
+    <div class="pin-actions">
+      <button type="button" class="pin-cancel" id="pin-cancel">Cancel</button>
+      <button type="submit" class="pin-submit">Unlock</button>
+    </div>
+  </form>
 </div>
 
 <script>
@@ -323,7 +372,11 @@
   // See README.md for the full setup steps.
   // =====================================================================
   const CONFIG = {
-    API_URL: 'https://script.google.com/macros/s/AKfycbxy4XTAnnmqaBewEBMFOkQqpaF9Z9XFL3YD9cKC5jNGqH6WQcxveTbEBpfV4WvX5Hftdg/exec'
+    API_URL: 'https://script.google.com/macros/s/AKfycbxy4XTAnnmqaBewEBMFOkQqpaF9Z9XFL3YD9cKC5jNGqH6WQcxveTbEBpfV4WvX5Hftdg/exec',
+    // Change this PIN before publishing the site. It only hides the dashboard
+    // from casual visitors — anyone who views the page source can read it,
+    // so don't rely on it to protect sensitive data. See README.md.
+    OWNER_PIN: '4512'
   };
   const isConfigured = CONFIG.API_URL && CONFIG.API_URL.indexOf('https://script.google.com') === 0;
   if(!isConfigured){
@@ -420,17 +473,64 @@
 
   // ---- tabs ----
   const tabBtns = document.querySelectorAll('.tab-btn');
+  const pinOverlay = document.getElementById('pin-overlay');
+  const pinForm = document.getElementById('pin-form');
+  const pinInput = document.getElementById('pin-input');
+  const pinError = document.getElementById('pin-error');
+  const pinCancel = document.getElementById('pin-cancel');
+  const UNLOCK_KEY = 'yakyim_owner_unlocked';
+
+  function isUnlocked(){
+    return sessionStorage.getItem(UNLOCK_KEY) === '1';
+  }
+  function activateTab(btn){
+    tabBtns.forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected','true');
+    document.getElementById(btn.dataset.target).classList.add('active');
+    if(btn.dataset.target === 'view-dashboard'){
+      renderDashboard(document.getElementById('d-date').value || localDateStr());
+    }
+  }
+  function openPinModal(){
+    pinError.textContent = '';
+    pinInput.value = '';
+    pinOverlay.classList.remove('hidden');
+    pinInput.focus();
+  }
+  function closePinModal(){
+    pinOverlay.classList.add('hidden');
+  }
+
   tabBtns.forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      tabBtns.forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
-      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-      btn.classList.add('active');
-      btn.setAttribute('aria-selected','true');
-      document.getElementById(btn.dataset.target).classList.add('active');
-      if(btn.dataset.target === 'view-dashboard'){
-        renderDashboard(document.getElementById('d-date').value || localDateStr());
+      if(btn.dataset.target === 'view-dashboard' && !isUnlocked()){
+        openPinModal();
+        return;
       }
+      activateTab(btn);
     });
+  });
+
+  pinForm.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    if(pinInput.value === CONFIG.OWNER_PIN){
+      sessionStorage.setItem(UNLOCK_KEY, '1');
+      closePinModal();
+      activateTab(document.getElementById('tab-dash'));
+    } else {
+      pinError.textContent = 'Incorrect PIN. Please try again.';
+      pinInput.value = '';
+      pinInput.focus();
+    }
+  });
+  pinCancel.addEventListener('click', closePinModal);
+  pinOverlay.addEventListener('click', (e)=>{ if(e.target === pinOverlay) closePinModal(); });
+
+  document.getElementById('lock-btn').addEventListener('click', ()=>{
+    sessionStorage.removeItem(UNLOCK_KEY);
+    activateTab(document.getElementById('tab-book'));
   });
 
   // ---- booking form setup ----
@@ -449,6 +549,16 @@
   const availContent = document.getElementById('availability-content');
   const submitBtn = document.getElementById('submit-btn');
   const formError = document.getElementById('form-error');
+  const staffPinField = document.getElementById('staff-pin-field');
+  const staffPinInput = document.getElementById('f-staff-pin');
+
+  function toggleStaffPinField(){
+    const size = parseInt(sizeInput.value, 10) || 0;
+    staffPinField.classList.toggle('hidden', size <= MAX_PER_TABLE);
+    if(size <= MAX_PER_TABLE) staffPinInput.value = '';
+  }
+  sizeInput.addEventListener('input', toggleStaffPinField);
+  toggleStaffPinField();
 
   async function updateAvailability(){
     const date = dateInput.value;
@@ -501,14 +611,16 @@
       return;
     }
     if(size > MAX_PER_TABLE){
-      formError.textContent = `Party size cannot exceed ${MAX_PER_TABLE} guests per table. Please split into two bookings or contact the restaurant directly.`;
-      return;
+      if(staffPinInput.value !== CONFIG.OWNER_PIN){
+        formError.textContent = `Parties over ${MAX_PER_TABLE} need staff approval. Please contact the restaurant directly, or enter the staff PIN to book online.`;
+        return;
+      }
     }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving…';
 
-    const result = await apiCreate({ name, phone, date, time, size, note });
+    const result = await apiCreate({ name, phone, date, time, size, note, staffPin: staffPinInput.value });
 
     submitBtn.disabled = false;
     submitBtn.textContent = 'Confirm Reservation';
@@ -538,6 +650,7 @@
     dateInput.value = date;
     sizeInput.value = 2;
     timeSelect.value = '';
+    toggleStaffPinField();
     updateAvailability();
   });
 
