@@ -638,7 +638,7 @@
   // international number already (e.g. "60123456789") rather than a local
   // number needing a country selector — so this just sanity-checks length.
   function isValidPhone(raw){
-    const digits = (raw||'').replace(/\D/g,'');
+    const digits = String(raw||'').replace(/\D/g,'');
     return /^\d{8,15}$/.test(digits);
   }
   // Builds a wa.me "click to send" link, pre-filled with a confirmation
@@ -646,8 +646,11 @@
   // no approval needed — the staff member's own WhatsApp does the sending.
   // b.phone is already a full international number (country dial code +
   // local number, no leading 0) because that's what's stored at booking time.
+  // Coerced with String() because older rows may have had their Phone cell
+  // auto-converted to a Number by Google Sheets (which also drops leading
+  // zeros) — .replace() would otherwise throw on a non-string value.
   function whatsAppLink(b){
-    const digits = (b.phone || '').replace(/\D/g,'');
+    const digits = String(b.phone || '').replace(/\D/g,'');
     const message = `Hi ${b.name}, your reservation at Yak Yim Thai Kitchen - Taman Paramount is confirmed for ${b.date} at ${b.time} for ${b.size} guest(s). Booking No. ${b.bookingNumber}. If you need to make any changes, please contact us directly.`;
     return 'https://wa.me/' + digits + '?text=' + encodeURIComponent(message);
   }
