@@ -1172,19 +1172,22 @@
       actions.appendChild(editBtn);
 
       const waSentLabel = card.querySelector('[data-wa-sent]');
-      const waBtn = document.createElement('button');
+      const waBtn = document.createElement('a');
       waBtn.className = 'chip-btn whatsapp';
-      waBtn.type = 'button';
+      waBtn.href = whatsAppLink(b);
+      waBtn.target = '_blank';
+      waBtn.rel = 'noopener';
       waBtn.textContent = b.whatsAppSentAt ? '💬 Resend WhatsApp' : '💬 Send WhatsApp';
+      // Don't preventDefault here — the browser's own <a> navigation is what
+      // reliably hands off to the WhatsApp app on mobile. window.open() from
+      // script gets blocked by mobile browsers far more often than a real
+      // link click, so this listener only records the "sent" status
+      // alongside the navigation, never instead of it.
       waBtn.addEventListener('click', async ()=>{
-        window.open(whatsAppLink(b), '_blank', 'noopener');
-        waBtn.disabled = true;
-        waBtn.textContent = '✓ Sent';
         const result = await apiMarkWhatsAppSent(b.id);
-        waBtn.disabled = false;
-        waBtn.textContent = '💬 Resend WhatsApp';
         if(result && result.ok){
           waSentLabel.textContent = '✓ WhatsApp sent ' + fmtSentTime(new Date().toISOString());
+          waBtn.textContent = '💬 Resend WhatsApp';
         }
       });
       actions.appendChild(waBtn);
