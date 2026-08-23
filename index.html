@@ -507,12 +507,17 @@
   }
 
   // ---- API calls to the Google Apps Script backend ----
-  async function apiList(date, month){
+  // full=true requests complete booking details (name, phone, note, photo) and
+  // requires the owner PIN. Leave it off (the default) for the customer-facing
+  // availability check, which only needs date/time/size/status — this keeps
+  // other customers' personal details out of that public response entirely.
+  async function apiList(date, month, full){
     if(!isConfigured) return [];
     try{
       let url = CONFIG.API_URL + '?action=list';
       if(month) url += '&month=' + encodeURIComponent(month);
       else if(date) url += '&date=' + encodeURIComponent(date);
+      if(full) url += '&pin=' + encodeURIComponent(CONFIG.OWNER_PIN);
       const res = await fetch(url);
       const data = await res.json();
       return (data && data.ok) ? data.bookings : [];
@@ -539,7 +544,7 @@
     try{
       const res = await fetch(CONFIG.API_URL, {
         method:'POST',
-        body: JSON.stringify({ action:'updateStatus', id, status })
+        body: JSON.stringify({ action:'updateStatus', id, status, pin: CONFIG.OWNER_PIN })
       });
       return await res.json();
     }catch(e){
@@ -910,7 +915,7 @@
     statGuests.textContent = '…';
     statCancelled.textContent = '…';
 
-    const all = await apiList(null, month);
+    const all = await apiList(null, month, true);
     const active = all.filter(b => b.status !== 'cancelled');
     statCount.textContent = active.length;
     statGuests.textContent = active.reduce((sum,b)=> sum + (b.size||0), 0);
@@ -922,7 +927,7 @@
     labelGuests.textContent = 'Total guests today';
     labelCancelled.textContent = 'Cancelled today';
     ticketRail.innerHTML = '<div class="loading-state">Loading…</div>';
-    const all = await apiList(date);
+    const all = await apiList(date, null, true);
     const list = all.slice().sort((a,b)=>{
       if(a.time !== b.time) return a.time < b.time ? -1 : 1;
       return (parseInt(a.bookingNumber,10)||0) - (parseInt(b.bookingNumber,10)||0);
@@ -994,7 +999,7 @@
     printBtn.disabled = true;
     printBtn.textContent = 'Preparing…';
 
-    const all = await apiList(date);
+    const all = await apiList(date, null, true);
     const list = all.slice().sort((a,b)=>{
       if(a.time !== b.time) return a.time < b.time ? -1 : 1;
       return (parseInt(a.bookingNumber,10)||0) - (parseInt(b.bookingNumber,10)||0);
