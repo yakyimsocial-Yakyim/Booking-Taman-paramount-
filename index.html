@@ -98,6 +98,10 @@
   }
   .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   @media (max-width:480px){ .field-row{ grid-template-columns:1fr; } }
+  .phone-row{ display:flex; gap:8px; }
+  .phone-row select{ flex:0 0 128px; font-family: var(--font-body); font-size:14px; padding:10px 8px; border-radius:6px; border:1.5px solid var(--line); background:#fff; color: var(--ink); }
+  .phone-row input{ flex:1; min-width:0; }
+  @media (max-width:420px){ .phone-row{ flex-direction:column; } .phone-row select{ flex:none; width:100%; } }
   textarea{ resize: vertical; min-height:60px; }
 
   .submit-btn{
@@ -154,6 +158,7 @@
   .paper-ticket dl{ margin:14px 0 0; display:grid; grid-template-columns: auto 1fr; gap:6px 14px; font-size:14px; }
   .paper-ticket dt{ font-weight:600; color: var(--teal); }
   .paper-ticket dd{ margin:0; font-family: var(--font-mono); }
+  .ticket-note{ font-size:12px; margin:14px 0 0; padding-top:12px; border-top:1px dashed var(--line); color: var(--ink); opacity:.8; line-height:1.5; }
 
   /* ---------- dashboard ---------- */
   .dash-controls{ display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
@@ -202,15 +207,18 @@
   .slip-meta{ font-size:13px; color: var(--ink); opacity:.75; margin-top:2px; }
   .slip-note{ font-size:13px; margin-top:6px; font-style:italic; color: var(--teal); }
   .slip-photo-link{ display:inline-block; margin-top:8px; }
+  .slip-wa-sent{ font-size:11px; color:#128C4A; font-weight:700; margin-top:6px; min-height:14px; }
   .slip-photo-link img{ max-height:70px; border-radius:6px; border:1px solid var(--line); display:block; }
   .slip-actions{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
   .chip-btn{
     font-family: var(--font-body); font-size:12px; font-weight:700; padding:6px 12px;
     border-radius:999px; border:1.5px solid var(--ink); background:transparent; cursor:pointer;
+    text-decoration:none; display:inline-block; line-height:1.4;
   }
   .chip-btn.primary{ background: var(--teal); color: var(--cream); border-color: var(--teal); }
   .chip-btn.danger{ border-color: var(--chili); color: var(--chili); }
   .chip-btn.danger.confirm{ background: var(--chili); color:#fff; }
+  .chip-btn.whatsapp{ border-color:#25D366; color:#128C4A; }
   .chip-btn:focus-visible{ outline: 3px solid var(--gold); outline-offset:2px; }
 
   .status-badge{ font-family: var(--font-mono); font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; text-transform:uppercase; letter-spacing:.04em; }
@@ -325,7 +333,10 @@
 
         <div class="field">
           <label for="f-phone">Phone Number</label>
-          <input type="tel" id="f-phone" name="phone" required autocomplete="tel" placeholder="e.g. 0812345678">
+          <div class="phone-row">
+            <select id="f-country" aria-label="Country code"></select>
+            <input type="tel" id="f-phone" name="phone" required autocomplete="tel" placeholder="0123456789">
+          </div>
         </div>
 
         <div class="field-row">
@@ -444,7 +455,7 @@
 <div class="pin-overlay hidden" id="booking-popup">
   <div class="pin-card popup-card">
     <h3>Booking Confirmed!</h3>
-    <p>Your booking is confirmed. If you would like to make any changes, please contact our staff directly.</p>
+    <p>We will hold your table for <strong>15 minutes</strong> from your reserved time. If you cannot make it within that time, please contact our staff directly — otherwise your table may be released.</p>
     <button type="button" class="pin-submit" id="popup-ok-btn">Got it</button>
   </div>
 </div>
@@ -515,6 +526,36 @@
   // Must match CLOSED_WEEKDAYS in Code.gs. 0=Sunday, 1=Monday, ..., 6=Saturday.
   const CLOSED_WEEKDAYS = [1]; // Monday
 
+  // Countries customers can select when entering their phone number. Each
+  // entry's "pattern" validates the LOCAL number as typed (before the dial
+  // code is added), and "stripLeadingZero" controls whether a leading 0 is
+  // dropped when building the international number (e.g. Malaysia/Thailand/UK
+  // dial with a leading 0 locally, but it's dropped for the +dial-code form;
+  // Singapore/US numbers are dialled without a leading 0 to begin with).
+  // Add more entries here to support more countries.
+  const COUNTRIES = [
+    { code:'MY', label:'🇲🇾 Malaysia (+60)',        dial:'60', pattern:/^0\d{8,9}$/,   placeholder:'0123456789',   stripLeadingZero:true  },
+    { code:'SG', label:'🇸🇬 Singapore (+65)',       dial:'65', pattern:/^[3689]\d{7}$/, placeholder:'81234567',     stripLeadingZero:false },
+    { code:'TH', label:'🇹🇭 Thailand (+66)',        dial:'66', pattern:/^0\d{8,9}$/,   placeholder:'0812345678',   stripLeadingZero:true  },
+    { code:'US', label:'🇺🇸 United States (+1)',    dial:'1',  pattern:/^\d{10}$/,      placeholder:'2025550123',   stripLeadingZero:false },
+    { code:'GB', label:'🇬🇧 United Kingdom (+44)',  dial:'44', pattern:/^0\d{9,10}$/,  placeholder:'07911123456',  stripLeadingZero:true  }
+  ];
+  function getCountry(code){
+    return COUNTRIES.find(c=>c.code===code) || COUNTRIES[0];
+  }
+  function isValidLocalPhone(countryCode, rawLocal){
+    const digits = (rawLocal||'').replace(/\D/g,'');
+    return getCountry(countryCode).pattern.test(digits);
+  }
+  // Combines a selected country with a locally-typed number into the full
+  // international number (digits only, no "+"), e.g. MY + "0123456789" -> "60123456789".
+  function buildIntlPhone(countryCode, rawLocal){
+    const country = getCountry(countryCode);
+    const digits = (rawLocal||'').replace(/\D/g,'');
+    const local = country.stripLeadingZero ? digits.replace(/^0/, '') : digits;
+    return country.dial + local;
+  }
+
   // Restaurant is open continuously 11:00am–9:30pm; bookable slots are every
   // 30 minutes across that whole window. Change OPEN_TIME/CLOSE_TIME here if
   // opening hours change.
@@ -568,6 +609,11 @@
     const d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' });
   }
+  function fmtSentTime(isoStr){
+    const d = new Date(isoStr);
+    if(isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-US', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  }
   // Mirrors Code.gs's isClosedDate — uses Date.UTC so the weekday check never
   // drifts with the visitor's local timezone.
   function isClosedDate(dateStr){
@@ -588,9 +634,22 @@
     const url = photoUrl(fileId);
     return `<a class="slip-photo-link" href="${url}" target="_blank" rel="noopener" title="View full-size photo"><img src="${url}" alt="Attached photo" loading="lazy"></a>`;
   }
+  // Used only by the staff Edit modal, where the phone field holds the full
+  // international number already (e.g. "60123456789") rather than a local
+  // number needing a country selector — so this just sanity-checks length.
   function isValidPhone(raw){
-    const digits = raw.replace(/\D/g,'');
-    return /^0\d{9}$/.test(digits);
+    const digits = (raw||'').replace(/\D/g,'');
+    return /^\d{8,15}$/.test(digits);
+  }
+  // Builds a wa.me "click to send" link, pre-filled with a confirmation
+  // message for staff to review and send from their own WhatsApp. No API,
+  // no approval needed — the staff member's own WhatsApp does the sending.
+  // b.phone is already a full international number (country dial code +
+  // local number, no leading 0) because that's what's stored at booking time.
+  function whatsAppLink(b){
+    const digits = (b.phone || '').replace(/\D/g,'');
+    const message = `Hi ${b.name}, your reservation at Yak Yim Thai Kitchen - Taman Paramount is confirmed for ${b.date} at ${b.time} for ${b.size} guest(s). Booking No. ${b.bookingNumber}. If you need to make any changes, please contact us directly.`;
+    return 'https://wa.me/' + digits + '?text=' + encodeURIComponent(message);
   }
 
   // ---- API calls to the Google Apps Script backend ----
@@ -650,6 +709,19 @@
     }catch(e){
       console.error('updateBooking error', e);
       return { ok:false, error:'Could not reach the server. Please try again.' };
+    }
+  }
+  async function apiMarkWhatsAppSent(id){
+    if(!isConfigured) return { ok:false };
+    try{
+      const res = await fetch(CONFIG.API_URL, {
+        method:'POST',
+        body: JSON.stringify({ action:'markWhatsAppSent', id, pin: CONFIG.OWNER_PIN })
+      });
+      return await res.json();
+    }catch(e){
+      console.error('markWhatsAppSent error', e);
+      return { ok:false };
     }
   }
   async function apiOcr(imageBase64, mimeType){
@@ -742,6 +814,16 @@
   dateInput.min = today;
 
   TIME_SLOTS.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; timeSelect.appendChild(o); });
+
+  const countrySelect = document.getElementById('f-country');
+  const phoneInput = document.getElementById('f-phone');
+  COUNTRIES.forEach(c=>{ const o=document.createElement('option'); o.value=c.code; o.textContent=c.label; countrySelect.appendChild(o); });
+  countrySelect.value = 'MY';
+  function updatePhonePlaceholder(){
+    phoneInput.placeholder = getCountry(countrySelect.value).placeholder;
+  }
+  updatePhonePlaceholder();
+  countrySelect.addEventListener('change', updatePhonePlaceholder);
 
   const availContent = document.getElementById('availability-content');
   const submitBtn = document.getElementById('submit-btn');
@@ -885,13 +967,14 @@
     e.preventDefault();
     formError.textContent = '';
     const name = document.getElementById('f-name').value.trim();
-    const phone = document.getElementById('f-phone').value.trim();
+    const phoneCountry = countrySelect.value;
+    const phoneLocal = phoneInput.value.trim();
     const date = dateInput.value;
     const time = timeSelect.value;
     const size = parseInt(sizeInput.value, 10);
     const note = document.getElementById('f-note').value.trim();
 
-    if(!name || !phone || !date || !time || !size){
+    if(!name || !phoneLocal || !date || !time || !size){
       formError.textContent = 'Please fill in all required fields.';
       return;
     }
@@ -899,10 +982,11 @@
       formError.textContent = 'We are closed on Mondays. Please choose another date.';
       return;
     }
-    if(!isValidPhone(phone)){
-      formError.textContent = 'Please enter a valid 10-digit mobile number starting with 0 (e.g. 0812345678). This number is used to verify the booking.';
+    if(!isValidLocalPhone(phoneCountry, phoneLocal)){
+      formError.textContent = `Please enter a valid phone number for ${getCountry(phoneCountry).label} (e.g. ${getCountry(phoneCountry).placeholder}). This number is used to verify the booking.`;
       return;
     }
+    const phone = buildIntlPhone(phoneCountry, phoneLocal);
     if(size > MAX_PER_TABLE){
       if(staffPinInput.value !== CONFIG.OWNER_PIN){
         formError.textContent = `Parties over ${MAX_PER_TABLE} need staff approval. Please contact the restaurant directly, or enter the staff PIN to book online.`;
@@ -941,6 +1025,7 @@
           <dt>Person</dt><dd>${size}</dd>
           <dt>Booking No.</dt><dd>${booking.bookingNumber}</dd>
         </dl>
+        <p class="ticket-note">We will hold your table for <strong>15 minutes</strong> from your reserved time. If you cannot make it within that time, please contact our staff directly.</p>
       </div>
     `;
     confirmationBox.focus();
@@ -1073,6 +1158,7 @@
           <div class="slip-meta">${b.size} guests · ${escapeHtml(b.phone)}</div>
           ${b.note ? `<div class="slip-note">${escapeHtml(b.note)}</div>` : ''}
           ${b.imageFileId ? renderPhotoThumb(b.imageFileId) : ''}
+          <div class="slip-wa-sent" data-wa-sent>${b.whatsAppSentAt ? '✓ WhatsApp sent ' + fmtSentTime(b.whatsAppSentAt) : ''}</div>
           <div class="slip-actions" data-actions></div>
         </div>
       `;
@@ -1084,6 +1170,24 @@
       editBtn.textContent = 'Edit';
       editBtn.addEventListener('click', ()=> openEditModal(b));
       actions.appendChild(editBtn);
+
+      const waSentLabel = card.querySelector('[data-wa-sent]');
+      const waBtn = document.createElement('button');
+      waBtn.className = 'chip-btn whatsapp';
+      waBtn.type = 'button';
+      waBtn.textContent = b.whatsAppSentAt ? '💬 Resend WhatsApp' : '💬 Send WhatsApp';
+      waBtn.addEventListener('click', async ()=>{
+        window.open(whatsAppLink(b), '_blank', 'noopener');
+        waBtn.disabled = true;
+        waBtn.textContent = '✓ Sent';
+        const result = await apiMarkWhatsAppSent(b.id);
+        waBtn.disabled = false;
+        waBtn.textContent = '💬 Resend WhatsApp';
+        if(result && result.ok){
+          waSentLabel.textContent = '✓ WhatsApp sent ' + fmtSentTime(new Date().toISOString());
+        }
+      });
+      actions.appendChild(waBtn);
 
       if(b.status === 'booked'){
         const seatBtn = document.createElement('button');
