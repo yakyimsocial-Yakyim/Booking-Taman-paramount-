@@ -1142,6 +1142,19 @@
 
     ticketRail.innerHTML = '';
     list.forEach(b=>{
+      try{
+        renderTicketCard(b);
+      }catch(err){
+        console.error('Failed to render booking card', b && b.id, err);
+        const errCard = document.createElement('div');
+        errCard.className = 'order-slip';
+        errCard.innerHTML = `<div class="slip-body"><div class="slip-name">⚠️ Could not display this booking (Booking No. ${b && b.bookingNumber || '?'})</div></div>`;
+        ticketRail.appendChild(errCard);
+      }
+    });
+  }
+
+  function renderTicketCard(b){
       const card = document.createElement('div');
       card.className = 'order-slip status-' + b.status;
       card.dataset.id = b.id;
@@ -1211,7 +1224,6 @@
         actions.appendChild(cancelBtn);
       }
       ticketRail.appendChild(card);
-    });
   }
 
   async function updateStatus(id, status){
