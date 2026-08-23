@@ -248,6 +248,20 @@
   .pin-submit:focus-visible, .pin-cancel:focus-visible{ outline: 3px solid var(--gold); outline-offset:2px; }
   .pin-error{ color: var(--chili); font-size:12px; font-weight:600; min-height:16px; margin:-4px 0 8px; }
 
+  .pin-card.wide-card{ max-width:420px; text-align:left; }
+  .pin-card.wide-card .field{ margin-bottom:14px; }
+  .pin-card.wide-card .field label{ display:block; font-size:13px; font-weight:600; margin-bottom:6px; }
+  .pin-card.wide-card .field input, .pin-card.wide-card .field select, .pin-card.wide-card .field textarea{
+    width:100%; font-family: var(--font-body); font-size:15px; letter-spacing:normal; text-align:left;
+    padding:10px 12px; border-radius:6px; border:1.5px solid var(--line); background:#fff; color: var(--ink);
+  }
+  .pin-card.wide-card .field textarea{ resize:vertical; min-height:56px; }
+  .pin-card.wide-card .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:480px){ .pin-card.wide-card .field-row{ grid-template-columns:1fr; } }
+
+  .popup-card p{ font-size:14px; line-height:1.6; margin:0 0 18px; color: var(--ink); opacity:.85; }
+  .popup-card .pin-submit{ width:100%; }
+
   footer.site-footer{ text-align:center; margin-top:40px; font-size:12px; opacity:.5; }
 
   /* ---------- print summary (hidden on screen, shown only when printing) ---------- */
@@ -427,6 +441,53 @@
   </form>
 </div>
 
+<div class="pin-overlay hidden" id="booking-popup">
+  <div class="pin-card popup-card">
+    <h3>Booking Confirmed!</h3>
+    <p>Your booking is confirmed. If you would like to make any changes, please contact our staff directly.</p>
+    <button type="button" class="pin-submit" id="popup-ok-btn">Got it</button>
+  </div>
+</div>
+
+<div class="pin-overlay hidden" id="edit-overlay">
+  <form class="pin-card wide-card" id="edit-form" novalidate>
+    <h3>Edit Booking</h3>
+    <p>Staff only. Changes are saved directly to the reservation.</p>
+
+    <div class="field">
+      <label for="edit-name">Name</label>
+      <input type="text" id="edit-name" required>
+    </div>
+    <div class="field">
+      <label for="edit-phone">Phone Number</label>
+      <input type="tel" id="edit-phone" required>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="edit-date">Date</label>
+        <input type="date" id="edit-date" required>
+      </div>
+      <div class="field">
+        <label for="edit-size">Person</label>
+        <input type="number" id="edit-size" min="1" max="70" required>
+      </div>
+    </div>
+    <div class="field">
+      <label for="edit-time">Time</label>
+      <select id="edit-time" required></select>
+    </div>
+    <div class="field">
+      <label for="edit-note">Note</label>
+      <textarea id="edit-note"></textarea>
+    </div>
+    <p class="pin-error" id="edit-error" role="alert" aria-live="polite"></p>
+    <div class="pin-actions">
+      <button type="button" class="pin-cancel" id="edit-cancel">Cancel</button>
+      <button type="submit" class="pin-submit">Save Changes</button>
+    </div>
+  </form>
+</div>
+
 <script>
 (function(){
   // =====================================================================
@@ -578,6 +639,19 @@
       return { ok:false };
     }
   }
+  async function apiUpdateBooking(id, fields){
+    if(!isConfigured) return { ok:false, error:'This page is not connected to a Google Sheet yet.' };
+    try{
+      const res = await fetch(CONFIG.API_URL, {
+        method:'POST',
+        body: JSON.stringify(Object.assign({ action:'updateBooking', id, pin: CONFIG.OWNER_PIN }, fields))
+      });
+      return await res.json();
+    }catch(e){
+      console.error('updateBooking error', e);
+      return { ok:false, error:'Could not reach the server. Please try again.' };
+    }
+  }
   async function apiOcr(imageBase64, mimeType){
     if(!isConfigured) return { ok:false, error:'This page is not connected to a Google Sheet yet.' };
     try{
@@ -653,6 +727,11 @@
     sessionStorage.removeItem(UNLOCK_KEY);
     activateTab(document.getElementById('tab-book'));
   });
+
+  // ---- booking confirmed popup ----
+  const bookingPopup = document.getElementById('booking-popup');
+  document.getElementById('popup-ok-btn').addEventListener('click', ()=> bookingPopup.classList.add('hidden'));
+  bookingPopup.addEventListener('click', (e)=>{ if(e.target === bookingPopup) bookingPopup.classList.add('hidden'); });
 
   // ---- booking form setup ----
   const dateInput = document.getElementById('f-date');
@@ -872,6 +951,7 @@
     toggleStaffPinField();
     resetPhotoState();
     updateAvailability();
+    bookingPopup.classList.remove('hidden');
   });
 
   // ---- dashboard ----
@@ -998,6 +1078,13 @@
       `;
 
       const actions = card.querySelector('[data-actions]');
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'chip-btn';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', ()=> openEditModal(b));
+      actions.appendChild(editBtn);
+
       if(b.status === 'booked'){
         const seatBtn = document.createElement('button');
         seatBtn.className = 'chip-btn primary';
@@ -1024,6 +1111,77 @@
     await apiUpdateStatus(id, status);
     refreshDashboard();
   }
+
+  // ---- edit booking modal (staff only) ----
+  const editOverlay = document.getElementById('edit-overlay');
+  const editForm = document.getElementById('edit-form');
+  const editNameInput = document.getElementById('edit-name');
+  const editPhoneInput = document.getElementById('edit-phone');
+  const editDateInput = document.getElementById('edit-date');
+  const editSizeInput = document.getElementById('edit-size');
+  const editTimeSelect = document.getElementById('edit-time');
+  const editNoteInput = document.getElementById('edit-note');
+  const editError = document.getElementById('edit-error');
+  const editCancelBtn = document.getElementById('edit-cancel');
+  const editSubmitBtn = editForm.querySelector('.pin-submit');
+  let editingId = null;
+
+  TIME_SLOTS.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; editTimeSelect.appendChild(o); });
+
+  function openEditModal(b){
+    editingId = b.id;
+    editNameInput.value = b.name;
+    editPhoneInput.value = b.phone;
+    editDateInput.value = b.date;
+    editSizeInput.value = b.size;
+    editTimeSelect.value = b.time;
+    editNoteInput.value = b.note || '';
+    editError.textContent = '';
+    editOverlay.classList.remove('hidden');
+    editNameInput.focus();
+  }
+  function closeEditModal(){
+    editOverlay.classList.add('hidden');
+    editingId = null;
+  }
+  editCancelBtn.addEventListener('click', closeEditModal);
+  editOverlay.addEventListener('click', (e)=>{ if(e.target === editOverlay) closeEditModal(); });
+
+  editForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    editError.textContent = '';
+    const name = editNameInput.value.trim();
+    const phone = editPhoneInput.value.trim();
+    const date = editDateInput.value;
+    const time = editTimeSelect.value;
+    const size = parseInt(editSizeInput.value, 10);
+    const note = editNoteInput.value.trim();
+
+    if(!name || !phone || !date || !time || !size){
+      editError.textContent = 'Please fill in all required fields.';
+      return;
+    }
+    if(!isValidPhone(phone)){
+      editError.textContent = 'Please enter a valid 10-digit mobile number starting with 0 (e.g. 0812345678).';
+      return;
+    }
+
+    editSubmitBtn.disabled = true;
+    editSubmitBtn.textContent = 'Saving…';
+
+    const result = await apiUpdateBooking(editingId, { name, phone, date, time, size, note });
+
+    editSubmitBtn.disabled = false;
+    editSubmitBtn.textContent = 'Save Changes';
+
+    if(!result.ok){
+      editError.textContent = result.error || 'Could not save changes. Please try again.';
+      return;
+    }
+
+    closeEditModal();
+    refreshDashboard();
+  });
 
   const printSummary = document.getElementById('print-summary');
 
