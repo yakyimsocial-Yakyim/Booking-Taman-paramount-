@@ -336,8 +336,6 @@
           <label for="f-time">Time</label>
           <select id="f-time" name="time" required>
             <option value="">— Select a time —</option>
-            <optgroup label="Lunch" id="grp-lunch"></optgroup>
-            <optgroup label="Dinner" id="grp-dinner"></optgroup>
           </select>
         </div>
 
@@ -453,14 +451,34 @@
   const SEATING_MINUTES = 120;
   const MAX_GUESTS_CONCURRENT = 57; // total capacity: 13+9+7+(5x4)+(4x2) = 57
   const MAX_PER_TABLE = 13;
+  // Must match CLOSED_WEEKDAYS in Code.gs. 0=Sunday, 1=Monday, ..., 6=Saturday.
+  const CLOSED_WEEKDAYS = [1]; // Monday
 
-  const LUNCH = ['11:00','11:30','12:00','12:30','13:00','13:30'];
-  const DINNER = ['17:00','17:30','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
+  // Restaurant is open continuously 11:00am–9:30pm; bookable slots are every
+  // 30 minutes across that whole window. Change OPEN_TIME/CLOSE_TIME here if
+  // opening hours change.
+  const OPEN_TIME = '11:00';
+  const CLOSE_TIME = '21:30';
+  const SLOT_INTERVAL_MINUTES = 30;
 
   function timeToMinutes(t){
     const parts = t.split(':');
     return parseInt(parts[0],10)*60 + parseInt(parts[1],10);
   }
+  function minutesToTime(m){
+    const h = Math.floor(m/60);
+    const mm = m % 60;
+    return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+  }
+  function buildTimeSlots(){
+    const slots = [];
+    const start = timeToMinutes(OPEN_TIME);
+    const end = timeToMinutes(CLOSE_TIME);
+    for(let m = start; m <= end; m += SLOT_INTERVAL_MINUTES) slots.push(minutesToTime(m));
+    return slots;
+  }
+  const TIME_SLOTS = buildTimeSlots();
+
   function getWindow(time){
     const start = timeToMinutes(time);
     return { start, end: start + SEATING_MINUTES };
@@ -488,6 +506,14 @@
   function fmtDateLabel(dateStr){
     const d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' });
+  }
+  // Mirrors Code.gs's isClosedDate — uses Date.UTC so the weekday check never
+  // drifts with the visitor's local timezone.
+  function isClosedDate(dateStr){
+    const parts = dateStr.split('-').map(Number);
+    if(parts.length !== 3) return false;
+    const d = new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
+    return CLOSED_WEEKDAYS.indexOf(d.getUTCDay()) !== -1;
   }
   function escapeHtml(str){
     const div = document.createElement('div');
@@ -636,10 +662,7 @@
   dateInput.value = today;
   dateInput.min = today;
 
-  const lunchGroup = document.getElementById('grp-lunch');
-  const dinnerGroup = document.getElementById('grp-dinner');
-  LUNCH.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; lunchGroup.appendChild(o); });
-  DINNER.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; dinnerGroup.appendChild(o); });
+  TIME_SLOTS.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; timeSelect.appendChild(o); });
 
   const availContent = document.getElementById('availability-content');
   const submitBtn = document.getElementById('submit-btn');
@@ -748,6 +771,11 @@
   async function updateAvailability(){
     const date = dateInput.value;
     const time = timeSelect.value;
+    if(date && isClosedDate(date)){
+      availContent.innerHTML = '<p class="avail-hint">We\'re closed on Mondays. Please choose another date.</p>';
+      submitBtn.disabled = isConfigured;
+      return;
+    }
     if(!date || !time){
       availContent.innerHTML = '<p class="avail-hint">Pick a date and time in the form to check availability for that slot.</p>';
       submitBtn.disabled = false;
@@ -786,6 +814,10 @@
 
     if(!name || !phone || !date || !time || !size){
       formError.textContent = 'Please fill in all required fields.';
+      return;
+    }
+    if(isClosedDate(date)){
+      formError.textContent = 'We are closed on Mondays. Please choose another date.';
       return;
     }
     if(!isValidPhone(phone)){
