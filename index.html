@@ -1148,7 +1148,7 @@
         console.error('Failed to render booking card', b && b.id, err);
         const errCard = document.createElement('div');
         errCard.className = 'order-slip';
-        errCard.innerHTML = `<div class="slip-body"><div class="slip-name">⚠️ Could not display this booking (Booking No. ${b && b.bookingNumber || '?'})</div></div>`;
+        errCard.innerHTML = `<div class="slip-body"><div class="slip-name">⚠️ Could not display this booking (Booking No. ${b && b.bookingNumber || '?'})</div><div class="slip-note" style="color:#B33A1E; font-style:normal; word-break:break-word;">${escapeHtml(String(err && err.message || err))}</div></div>`;
         ticketRail.appendChild(errCard);
       }
     });
