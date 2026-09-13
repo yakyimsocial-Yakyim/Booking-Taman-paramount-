@@ -636,6 +636,12 @@
     const d = new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
     return CLOSED_WEEKDAYS.indexOf(d.getUTCDay()) !== -1;
   }
+  // "yyyy-MM-dd" strings compare the same lexicographically as chronologically.
+  // Recomputes "today" fresh each call (rather than reusing a stale variable)
+  // so this stays correct even if the tab is left open across midnight.
+  function isPastDate(dateStr){
+    return dateStr < localDateStr();
+  }
   function escapeHtml(str){
     const div = document.createElement('div');
     div.textContent = str;
@@ -949,6 +955,11 @@
   async function updateAvailability(){
     const date = dateInput.value;
     const time = timeSelect.value;
+    if(date && isPastDate(date)){
+      availContent.innerHTML = '<p class="avail-hint">That date has already passed. Please choose today or a later date.</p>';
+      submitBtn.disabled = isConfigured;
+      return;
+    }
     if(date && isClosedDate(date)){
       availContent.innerHTML = '<p class="avail-hint">We\'re closed on Mondays. Please choose another date.</p>';
       submitBtn.disabled = isConfigured;
@@ -993,6 +1004,10 @@
 
     if(!name || !phoneLocal || !date || !time || !size){
       formError.textContent = 'Please fill in all required fields.';
+      return;
+    }
+    if(isPastDate(date)){
+      formError.textContent = 'That date has already passed. Please choose today or a later date.';
       return;
     }
     if(isClosedDate(date)){
