@@ -836,7 +836,28 @@
   dateInput.value = today;
   dateInput.min = today;
 
-  TIME_SLOTS.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; timeSelect.appendChild(o); });
+  // Populates the Time dropdown for the current date selection. When the
+  // customer has today's date picked, time slots that have already passed
+  // are left out entirely (rather than just shown as invalid) — a slot
+  // that's already gone isn't something they can book anyway.
+  function nowTimeStr(){
+    const d = new Date();
+    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+  function refreshTimeOptions(){
+    const previousValue = timeSelect.value;
+    const isToday = dateInput.value === localDateStr();
+    const cutoff = isToday ? nowTimeStr() : null;
+    const slots = cutoff ? TIME_SLOTS.filter(t => t > cutoff) : TIME_SLOTS;
+
+    timeSelect.innerHTML = '<option value="">— Select a time —</option>';
+    slots.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; timeSelect.appendChild(o); });
+
+    if(slots.indexOf(previousValue) !== -1){
+      timeSelect.value = previousValue;
+    }
+  }
+  refreshTimeOptions();
 
   const countrySelect = document.getElementById('f-country');
   const phoneInput = document.getElementById('f-phone');
@@ -940,6 +961,7 @@
     if(f.name) document.getElementById('f-name').value = f.name;
     if(f.phone) document.getElementById('f-phone').value = f.phone;
     if(f.date) dateInput.value = f.date;
+    refreshTimeOptions();
     if(f.time){
       const opt = Array.from(timeSelect.options).find(o=>o.value===f.time);
       if(opt) timeSelect.value = f.time;
@@ -984,7 +1006,7 @@
     `;
     submitBtn.disabled = guestsFull && isConfigured;
   }
-  dateInput.addEventListener('change', updateAvailability);
+  dateInput.addEventListener('change', ()=>{ refreshTimeOptions(); updateAvailability(); });
   timeSelect.addEventListener('change', updateAvailability);
 
   // ---- submit booking ----
