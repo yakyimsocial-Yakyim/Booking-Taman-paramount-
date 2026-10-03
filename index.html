@@ -365,7 +365,7 @@
         <p class="size-hint" id="size-hint">Parties over 13 need staff approval — see below, or contact us directly.</p>
 
         <div class="field hidden" id="staff-pin-field">
-          <label for="f-staff-pin">Staff PIN (required for parties over 13)</label>
+          <label for="f-staff-pin">Staff PIN (required for parties over 13, or bookings within 3 hours)</label>
           <input type="password" inputmode="numeric" id="f-staff-pin" name="staffPin" autocomplete="off" placeholder="••••">
         </div>
 
@@ -642,6 +642,35 @@
   function isPastDate(dateStr){
     return dateStr < localDateStr();
   }
+
+  // ---- 3-hour advance booking rule (mirrors Code.gs) ----
+  // Uses the restaurant's own timezone (not the visitor's device clock) so
+  // the rule behaves the same for a customer abroad. Staff who enter the PIN
+  // can bypass it.
+  const MIN_ADVANCE_MINUTES = 180;
+  const RESTAURANT_TZ = 'Asia/Kuala_Lumpur';
+  const TOO_SOON_MSG = 'Bookings within 3 hours of the reservation time cannot be made online. Please contact the restaurant directly.';
+
+  function restaurantNow(){
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: RESTAURANT_TZ, year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', hourCycle:'h23'
+    }).formatToParts(new Date());
+    const g = t => parts.find(p => p.type === t).value;
+    return {
+      date: g('year') + '-' + g('month') + '-' + g('day'),
+      minutes: parseInt(g('hour'),10)*60 + parseInt(g('minute'),10)
+    };
+  }
+  function isTooSoon(dateStr, timeStr){
+    if(!dateStr || !timeStr) return false;
+    const now = restaurantNow();
+    const p = dateStr.split('-').map(Number);
+    const t = now.date.split('-').map(Number);
+    const dayDiff = (Date.UTC(p[0],p[1]-1,p[2]) - Date.UTC(t[0],t[1]-1,t[2])) / 86400000;
+    return (dayDiff*1440 + timeToMinutes(timeStr) - now.minutes) < MIN_ADVANCE_MINUTES;
+  }
+
   function escapeHtml(str){
     const div = document.createElement('div');
     div.textContent = str;
@@ -836,24 +865,20 @@
   dateInput.value = today;
   dateInput.min = today;
 
-  // Populates the Time dropdown for the current date selection. When the
-  // customer has today's date picked, time slots that have already passed
-  // are left out entirely (rather than just shown as invalid) — a slot
-  // that's already gone isn't something they can book anyway.
-  function nowTimeStr(){
-    const d = new Date();
-    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-  }
+  // Populates the Time dropdown for the current date selection. Every slot
+  // stays visible; slots that fall inside the 3-hour window are labelled
+  // "(contact restaurant)" so customers understand why they can't book them
+  // online. Choosing one reveals the Staff PIN field (staff can still book).
   function refreshTimeOptions(){
     const previousValue = timeSelect.value;
-    const isToday = dateInput.value === localDateStr();
-    const cutoff = isToday ? nowTimeStr() : null;
-    const slots = cutoff ? TIME_SLOTS.filter(t => t > cutoff) : TIME_SLOTS;
-
     timeSelect.innerHTML = '<option value="">— Select a time —</option>';
-    slots.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; timeSelect.appendChild(o); });
-
-    if(slots.indexOf(previousValue) !== -1){
+    TIME_SLOTS.forEach(t=>{
+      const o = document.createElement('option');
+      o.value = t;
+      o.textContent = isTooSoon(dateInput.value, t) ? t + ' (contact restaurant)' : t;
+      timeSelect.appendChild(o);
+    });
+    if(TIME_SLOTS.indexOf(previousValue) !== -1){
       timeSelect.value = previousValue;
     }
   }
@@ -875,10 +900,13 @@
   const staffPinField = document.getElementById('staff-pin-field');
   const staffPinInput = document.getElementById('f-staff-pin');
 
+  // The Staff PIN box appears when the party is over the table limit OR the
+  // chosen time is inside the 3-hour window.
   function toggleStaffPinField(){
     const size = parseInt(sizeInput.value, 10) || 0;
-    staffPinField.classList.toggle('hidden', size <= MAX_PER_TABLE);
-    if(size <= MAX_PER_TABLE) staffPinInput.value = '';
+    const needsPin = size > MAX_PER_TABLE || isTooSoon(dateInput.value, timeSelect.value);
+    staffPinField.classList.toggle('hidden', !needsPin);
+    if(!needsPin) staffPinInput.value = '';
   }
   sizeInput.addEventListener('input', toggleStaffPinField);
   toggleStaffPinField();
@@ -975,6 +1003,7 @@
   });
 
   async function updateAvailability(){
+    toggleStaffPinField();
     const date = dateInput.value;
     const time = timeSelect.value;
     if(date && isPastDate(date)){
@@ -985,6 +1014,11 @@
     if(date && isClosedDate(date)){
       availContent.innerHTML = '<p class="avail-hint">We\'re closed on Mondays. Please choose another date.</p>';
       submitBtn.disabled = isConfigured;
+      return;
+    }
+    if(date && time && isTooSoon(date, time)){
+      availContent.innerHTML = '<p class="avail-hint">' + TOO_SOON_MSG + '</p>';
+      submitBtn.disabled = false; // staff can still book by entering the PIN
       return;
     }
     if(!date || !time){
@@ -1041,11 +1075,17 @@
       return;
     }
     const phone = buildIntlPhone(phoneCountry, phoneLocal);
-    if(size > MAX_PER_TABLE){
-      if(staffPinInput.value !== CONFIG.OWNER_PIN){
-        formError.textContent = `Parties over ${MAX_PER_TABLE} need staff approval. Please contact the restaurant directly, or enter the staff PIN to book online.`;
-        return;
-      }
+
+    // Staff who enter the correct PIN can bypass the 3-hour rule and the
+    // party-size limit. The server re-checks this too.
+    const isStaff = staffPinInput.value === CONFIG.OWNER_PIN;
+    if(isTooSoon(date, time) && !isStaff){
+      formError.textContent = TOO_SOON_MSG;
+      return;
+    }
+    if(size > MAX_PER_TABLE && !isStaff){
+      formError.textContent = `Parties over ${MAX_PER_TABLE} need staff approval. Please contact the restaurant directly, or enter the staff PIN to book online.`;
+      return;
     }
 
     submitBtn.disabled = true;
